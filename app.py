@@ -20,7 +20,6 @@ Key features:
 - Conflicts detection and highlighted roster view.
 - Editable roster grid with save.
 - Overview list + calendar; overview supports consultant filter.
-- Singapore public holidays hardwired for 2024–2026.
 """
 
 APP_TITLE = "NTBSC Roster Planner"
@@ -30,25 +29,6 @@ DATA_DIR.mkdir(exist_ok=True)
 ROSTER_DIR.mkdir(exist_ok=True)
 
 ADMIN_PASSWORD = "NTBSC_jy"
-
-# -------------------- Hardwired Singapore Public Holidays --------------------
-def sg_public_holidays(year: int):
-    # Note: keep this table current; extend years as needed.
-    fixed = {
-        2024: [
-            "2024-01-01", "2024-02-10", "2024-02-11", "2024-03-29", "2024-04-10",
-            "2024-05-01", "2024-05-22", "2024-06-17", "2024-08-09", "2024-10-31", "2024-12-25",
-        ],
-        2025: [
-            "2025-01-01", "2025-01-29", "2025-01-30", "2025-04-18", "2025-05-01",
-            "2025-05-12", "2025-06-06", "2025-08-09", "2025-10-20", "2025-12-25",
-        ],
-        2026: [
-            "2026-01-01", "2026-02-17", "2026-02-18", "2026-04-03", "2026-05-01",
-            "2026-05-22", "2026-06-26", "2026-08-09", "2026-11-09", "2026-12-25",
-        ],
-    }
-    return set(pd.to_datetime(fixed.get(year, []), errors="coerce").dropna().date)
 
 # -------------------- IO helpers --------------------
 def ensure_seed_files():
@@ -168,10 +148,6 @@ def _room28_default_for(wd, session, defaults_df):
     return (m.iloc[0]["consultant"].strip() if not m.empty else "")
 
 
-def _is_ph(d: date, year_ph_set: set):
-    return d in year_ph_set
-
-
 def _has_leave(consultant, d, session, duties_df):
     rows = duties_df[(duties_df["consultant"] == consultant) & (duties_df["date"] == d) & (duties_df["kind"] == "leave")]
     for _, r in rows.iterrows():
@@ -203,7 +179,6 @@ def build_roster(
     consultants_df,
     defaults_df,
     juniors_df,
-    year_ph_set,
     duties_df,
     paeds_df,
     special_df,
@@ -226,8 +201,6 @@ def build_roster(
         fri_2_4_month = fri_2_4
 
         def _is_available_for_session(cand, d, sess):
-            if _is_ph(d, year_ph_set):
-                return False
             wd = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][d.weekday()]
             r28 = _room28_default_for(wd, sess, defaults_df)
             if wd == "Fri" and sess == "PM" and d in fri_2_4_month:
@@ -341,12 +314,6 @@ def build_roster(
         r = roster.loc[i]
         d, session = r["date"], r["session"]
 
-        # PH
-        if _is_ph(d, year_ph_set):
-            _wipe(roster.loc[i], ["Room 18", "Room 28", "Preceptor", "Room 29"])
-            roster.loc[i, "notes"] = (roster.loc[i, "notes"] + "; Public Holiday").strip("; ")
-            continue
-
         # Leave / Woodlands affect Room28 & Preceptor
         for col in ("Room 28", "Preceptor"):
             name = r[col]
@@ -377,7 +344,7 @@ def build_roster(
 
 # -------------------- Conflicts & styling --------------------
 
-def conflicts(roster_df, consultants_df, year_ph_set, duties_df):
+def conflicts(roster_df, consultants_df, duties_df):
     rows = []
     preceptor_ok = set(
         consultants_df[
@@ -399,12 +366,6 @@ def conflicts(roster_df, consultants_df, year_ph_set, duties_df):
 
     for idx, r in roster_df.reset_index().iterrows():
         d, sess = r["date"], r["session"]
-
-        # PH scheduling
-        if d in year_ph_set:
-            for field in ["Room 18", "Room 28", "Preceptor", "Room 29"]:
-                if str(r[field]).strip():
-                    _add(r["index"], d, sess, field, r[field], "Scheduled on public holiday")
 
         # Duty violations
         for field in ["Room 28", "Preceptor"]:
@@ -484,7 +445,7 @@ def overview_list(roster_df: pd.DataFrame):
     return pd.DataFrame(out).sort_values("date")
 
 
-def calendar_markdown(roster_df: pd.DataFrame, year_ph_set: set):
+def calendar_markdown(roster_df: pd.DataFrame):
     if roster_df.empty:
         return "_No roster_"
     year = roster_df["date"].iloc[0].year
@@ -504,7 +465,7 @@ def calendar_markdown(roster_df: pd.DataFrame, year_ph_set: set):
                 continue
             am = idx.get((d, "AM"))
             pm = idx.get((d, "PM"))
-            ph_badge = " **PH**" if d in year_ph_set else ""
+            ph_badge = ""
 
             def fmt(slot):
                 if slot is None:
@@ -584,8 +545,6 @@ def main():
     paeds_df = read_csv("paeds.csv")
     special_df = read_csv("special_slots.csv")
 
-    year_ph = sg_public_holidays(int(year))
-
     # Build or load roster for selected month
     roster_fp = ROSTER_DIR / f"{int(year)}-{int(month):02d}.csv"
     if roster_fp.exists():
@@ -599,7 +558,6 @@ def main():
             consultants_df,
             defaults_df,
             juniors_df,
-            year_ph,
             duties_df,
             paeds_df,
             special_df,
@@ -668,7 +626,6 @@ def main():
                     read_csv("consultants.csv", parse_dates=()),
                     read_csv("room28_defaults.csv", parse_dates=()),
                     read_csv("juniors.csv"),
-                    sg_public_holidays(int(year)),
                     read_csv("duties.csv"),
                     read_csv("paeds.csv"),
                     read_csv("special_slots.csv"),
@@ -679,7 +636,6 @@ def main():
             conf_df = conflicts(
                 roster_df,
                 read_csv("consultants.csv", parse_dates=()),
-                sg_public_holidays(int(year)),
                 read_csv("duties.csv"),
             )
 
@@ -706,7 +662,7 @@ def main():
         if not (ROSTER_DIR / f"{int(year)}-{int(month):02d}.csv").exists():
             roster_df = build_roster(
                 int(year), int(month), mode,
-                consultants_df, defaults_df, juniors_df, year_ph, duties_df, paeds_df, special_df,
+                consultants_df, defaults_df, juniors_df, duties_df, paeds_df, special_df,
             )
         ov = overview_list(roster_df)
 
@@ -730,7 +686,7 @@ def main():
         st.dataframe(ovf, width="stretch", height=480)
 
         st.subheader("Calendar")
-        md = calendar_markdown(roster_df, year_ph)
+        md = calendar_markdown(roster_df)
         st.markdown(md, unsafe_allow_html=True)
 
     with tabs[-1]:
@@ -738,7 +694,7 @@ def main():
         if not (ROSTER_DIR / f"{int(year)}-{int(month):02d}.csv").exists():
             roster_df = build_roster(
                 int(year), int(month), mode,
-                consultants_df, defaults_df, juniors_df, year_ph, duties_df, paeds_df, special_df,
+                consultants_df, defaults_df, juniors_df, duties_df, paeds_df, special_df,
             )
         csv_bytes = roster_df.to_csv(index=False).encode("utf-8")
         st.download_button(
