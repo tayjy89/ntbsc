@@ -28,6 +28,8 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 import streamlit as st
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 APP_TITLE = "NTBSC Roster Planner"
 DATA_DIR = Path("data")
@@ -406,8 +408,6 @@ def calendar_markdown(roster_df: pd.DataFrame, year_ph_set: set):
 
 # -------------------- Exports --------------------
 def excel_bytes(roster_df: pd.DataFrame) -> bytes:
-    from openpyxl import Workbook
-    from openpyxl.utils.dataframe import dataframe_to_rows
     wb = Workbook()
     ws1 = wb.active; ws1.title = "Roster"
     for r in dataframe_to_rows(roster_df, index=False, header=True): ws1.append(r)
