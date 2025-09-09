@@ -75,8 +75,24 @@ def read_csv(name, parse_dates=("date",)):
 
 def write_csv(name, df):
     df2 = df.copy()
+
+    # Replace NaN/None with "" in non-date columns; normalise "nan" strings
     for c in df2.columns:
-        df2[c] = df2[c].map(lambda x: x.isoformat() if hasattr(x, "isoformat") else x)
+        if c.lower() != "date":
+            df2[c] = df2[c].where(~pd.isna(df2[c]), "")
+            df2[c] = df2[c].map(lambda x: "" if pd.isna(x) else ("" if str(x).strip().lower()=="nan" else str(x)))
+
+    def _norm(x):
+        if hasattr(x, "isoformat"):  # dates
+            return x.isoformat()
+        if pd.isna(x) or x is None:
+            return ""
+        sx = str(x)
+        return "" if sx.strip().lower()=="nan" else sx
+
+    for c in df2.columns:
+        df2[c] = df2[c].map(_norm)
+
     df2.to_csv(DATA_DIR / name, index=False)
 
 def read_settings(): return json.load(open(DATA_DIR / "settings.json"))
@@ -259,16 +275,32 @@ def style_roster(roster_df: pd.DataFrame, conf_df: pd.DataFrame):
     return roster_df.style.set_properties(**{"font-size":"12px","padding":"4px 6px"}).apply(lambda _: styles, axis=None)
 
 def overview_list(roster_df: pd.DataFrame):
+    if roster_df.empty:
+        return pd.DataFrame(columns=["date","weekday","Room18_AM","Room28_AM","Preceptor_AM","Room29_AM",
+                                     "Room18_PM","Room28_PM","Preceptor_PM","Room29_PM","notes"])
+
+    def _s(x):
+        if pd.isna(x) or x is None: return ""
+        sx = str(x)
+        return "" if sx.strip().lower()=="nan" else sx
+
     def _compact(day_df):
-        rec = {"date": day_df.iloc[0]["date"], "weekday": day_df.iloc[0]["weekday"]}
+        day_df = day_df.copy()
+        # normalise columns to strings
+        for c in ["Room 18","Room 28","Preceptor","Room 29","notes","session","weekday"]:
+            if c in day_df.columns:
+                day_df[c] = day_df[c].map(_s)
+        rec = {"date": day_df.iloc[0]["date"], "weekday": _s(day_df.iloc[0]["weekday"])}
         for _, r in day_df.iterrows():
             sfx = r["session"]
-            rec[f"Room18_{sfx}"] = r["Room 18"]
-            rec[f"Room28_{sfx}"] = r["Room 28"]
-            rec[f"Preceptor_{sfx}"] = r["Preceptor"]
-            rec[f"Room29_{sfx}"] = r["Room 29"]
-        rec["notes"] = "; ".join([x for x in day_df["notes"].tolist() if x])
+            rec[f"Room18_{sfx}"] = _s(r.get("Room 18"))
+            rec[f"Room28_{sfx}"] = _s(r.get("Room 28"))
+            rec[f"Preceptor_{sfx}"] = _s(r.get("Preceptor"))
+            rec[f"Room29_{sfx}"] = _s(r.get("Room 29"))
+        notes_clean = [_s(x) for x in day_df["notes"].tolist() if _s(x)]
+        rec["notes"] = "; ".join(notes_clean)
         return rec
+
     out = []
     for d, grp in roster_df.groupby("date", sort=True):
         out.append(_compact(grp.sort_values("session")))
@@ -320,6 +352,14 @@ def excel_bytes(roster_df: pd.DataFrame):
     ws3 = wb.create_sheet("Export_Flat")
     for r in dataframe_to_rows(roster_df, index=False, header=True): ws3.append(r)
     bio = BytesIO(); wb.save(bio); bio.seek(0); return bio.getvalue()
+
+def _normalise_roster_inplace(df: pd.DataFrame):
+    """Coerce key columns to strings; replace NaN/None/'nan' with '' to avoid join/type errors."""
+    for col in ["Room 18","Room 28","Preceptor","Room 29","notes","session","weekday"]:
+        if col in df.columns:
+            df[col] = df[col].astype("object")
+            df[col] = df[col].where(~pd.isna(df[col]), "")
+            df[col] = df[col].map(lambda x: "" if pd.isna(x) else ("" if str(x).strip().lower()=="nan" else str(x)))
 
 def main():
     st.set_page_config(page_title=APP_TITLE, layout="wide")
