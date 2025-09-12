@@ -551,16 +551,17 @@ def main():
                 column_config={"date": st.column_config.DateColumn("Date"), "session": st.column_config.SelectboxColumn("Session", options=["AM","PM"])},
                 num_rows="dynamic", width="stretch", key="edit_roster"
             )
+            
             if st.button("Save Roster for this Month"):
-                df2 = redit.copy()
-                df2["date"] = pd.to_datetime(df2["date"], errors="coerce").dt.date
-                # Normalise NaNs/None to empty strings
-                for col in ["Room 18","Room 28","Preceptor","Room 29","notes","session","weekday"]:
-                    if col in df2.columns:
-                        df2[col] = df2[col].astype("object").fillna("").replace("nan","")
-                save_path = ROSTER_DIR / f"{int(year)}-{int(month):02d}.csv"
-                df2.to_csv(save_path, index=False)
-                st.success(f"Roster saved to {save_path}")
+                try:
+                    df2 = redit.copy()
+                    df2["date"] = pd.to_datetime(df2["date"], errors="coerce").dt.date
+                    save_path = ROSTER_DIR / f"{int(year)}-{int(month):02d}.csv"
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    df2.to_csv(save_path, index=False)
+                    st.success(f"Roster saved to: {save_path.resolve()}")
+                except Exception as e:
+                    st.error(f"Failed to save roster: {e}")
 
             st.markdown("**Conflicts**")
             st.dataframe(conf_df, use_container_width=True, height=240)
