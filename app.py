@@ -555,12 +555,12 @@ def main():
                 df2 = redit.copy()
                 df2["date"] = pd.to_datetime(df2["date"], errors="coerce").dt.date
                 # Normalise NaNs/None to empty strings
-            for col in ["Room 18","Room 28","Preceptor","Room 29","notes","session","weekday"]:
-            if col in df2.columns:
-            df2[col] = df2[col].astype("object").fillna("").replace("nan","")
-            save_path = ROSTER_DIR / f"{int(year)}-{int(month):02d}.csv"
-            df2.to_csv(save_path, index=False)
-            st.success(f"Roster saved to {save_path}")
+                for col in ["Room 18","Room 28","Preceptor","Room 29","notes","session","weekday"]:
+                    if col in df2.columns:
+                        df2[col] = df2[col].astype("object").fillna("").replace("nan","")
+                save_path = ROSTER_DIR / f"{int(year)}-{int(month):02d}.csv"
+                df2.to_csv(save_path, index=False)
+                st.success(f"Roster saved to {save_path}")
 
             st.markdown("**Conflicts**")
             st.dataframe(conf_df, use_container_width=True, height=240)
