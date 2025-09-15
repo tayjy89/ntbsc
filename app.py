@@ -16,6 +16,10 @@ import streamlit as st
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 
+from google.cloud import firestore
+def get_db():
+    return firestore.Client()
+
 APP_TITLE = "NTBSC Roster Planner"
 DATA_DIR = Path("data")
 ROSTER_DIR = DATA_DIR / "rosters"
